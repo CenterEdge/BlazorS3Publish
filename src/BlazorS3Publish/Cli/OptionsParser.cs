@@ -1,16 +1,40 @@
 using System.CommandLine;
 using BlazorS3Publish.Models;
+using BlazorS3Publish.Services;
 
 namespace BlazorS3Publish.Cli;
 
 internal static class OptionsParser
 {
-    public static UploadOptions Parse(string[] arguments)
+    public static RootCommand CreateRootCommand()
     {
-        var sourceOption = new Option<string>("--source");
-        var bucketNameOption = new Option<string>("--bucket-name");
-        var keyPrefixOption = new Option<string>("--key-prefix");
-        var maxParallelUploadsOption = new Option<int?>("--max-parallel-uploads");
+        var sourceOption = new Option<string>("--source")
+        {
+            Required = true,
+            Description = "Path to the Blazor publish output directory."
+        };
+        var bucketNameOption = new Option<string>("--bucket-name")
+        {
+            Required = true,
+            Description = "S3 bucket name to upload to."
+        };
+        var keyPrefixOption = new Option<string>("--key-prefix")
+        {
+            Description = "Optional S3 key prefix to prepend to uploaded files."
+        };
+        var maxParallelUploadsOption = new Option<int?>("--max-parallel-uploads")
+        {
+            Description = "Maximum concurrent uploads (1-64)."
+        };
+        maxParallelUploadsOption.Validators.Add(
+            result =>
+            {
+                var maxParallelUploads = result.GetValueOrDefault<int?>();
+                if (maxParallelUploads is < 1 or > 64)
+                {
+                    result.AddError("Option '--max-parallel-uploads' must be an integer between 1 and 64.");
+                }
+            });
 
         var rootCommand = new RootCommand("Uploads Blazor publish output to S3.")
         {
@@ -19,39 +43,29 @@ internal static class OptionsParser
             keyPrefixOption,
             maxParallelUploadsOption
         };
+        rootCommand.SetAction(
+            async (parseResult, cancellationToken) =>
+            {
+                var source = parseResult.GetValue(sourceOption);
+                var bucketName = parseResult.GetValue(bucketNameOption);
+                if (source is null || bucketName is null)
+                {
+                    throw new InvalidOperationException("Required options were not provided.");
+                }
 
-        var parseResult = rootCommand.Parse(arguments);
-        if (parseResult.Errors.Count > 0)
-        {
-            throw new InvalidOperationException(string.Join(Environment.NewLine, parseResult.Errors.Select(error => error.Message)));
-        }
+                var options = new UploadOptions
+                {
+                    Source = source,
+                    BucketName = bucketName,
+                    KeyPrefix = parseResult.GetValue(keyPrefixOption) ?? string.Empty,
+                    MaxParallelUploads = parseResult.GetValue(maxParallelUploadsOption) ?? 8
+                };
 
-        var source = parseResult.GetValue(sourceOption);
-        var bucketName = parseResult.GetValue(bucketNameOption);
-        var keyPrefix = parseResult.GetValue(keyPrefixOption) ?? string.Empty;
-        var maxParallelUploads = parseResult.GetValue(maxParallelUploadsOption) ?? 8;
+                var uploadService = new UploadService();
+                await uploadService.UploadAsync(options, cancellationToken);
+                return 0;
+            });
 
-        if (maxParallelUploads is < 1 or > 64)
-        {
-            throw new InvalidOperationException("Argument '--max-parallel-uploads' must be an integer between 1 and 64.");
-        }
-
-        if (string.IsNullOrWhiteSpace(source))
-        {
-            throw new InvalidOperationException("Argument '--source' is required.");
-        }
-
-        if (string.IsNullOrWhiteSpace(bucketName))
-        {
-            throw new InvalidOperationException("Argument '--bucket-name' is required.");
-        }
-
-        return new UploadOptions
-        {
-            Source = source,
-            BucketName = bucketName,
-            KeyPrefix = keyPrefix,
-            MaxParallelUploads = maxParallelUploads
-        };
+        return rootCommand;
     }
 }
