@@ -11,4 +11,9 @@
     <Description>Tool for uploading Blazor WASM applications to AWS S3 with cache control headers, etc.</Description>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="AWSSDK.S3" Version="4.0.24.1" />
+    <PackageReference Include="System.CommandLine" Version="2.0.8" />
+  </ItemGroup>
+
 </Project>
