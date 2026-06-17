@@ -7,14 +7,14 @@ internal static class OptionsParser
 {
     public static UploadOptions Parse(string[] arguments)
     {
-        var sourceDirectoryOption = new Option<string>("--source-directory");
+        var sourceOption = new Option<string>("--source");
         var bucketNameOption = new Option<string>("--bucket-name");
         var keyPrefixOption = new Option<string>("--key-prefix");
         var maxParallelUploadsOption = new Option<int?>("--max-parallel-uploads");
 
         var rootCommand = new RootCommand("Uploads Blazor publish output to S3.")
         {
-            sourceDirectoryOption,
+            sourceOption,
             bucketNameOption,
             keyPrefixOption,
             maxParallelUploadsOption
@@ -26,7 +26,7 @@ internal static class OptionsParser
             throw new InvalidOperationException(string.Join(Environment.NewLine, parseResult.Errors.Select(error => error.Message)));
         }
 
-        var sourceDirectory = parseResult.GetValue(sourceDirectoryOption);
+        var source = parseResult.GetValue(sourceOption);
         var bucketName = parseResult.GetValue(bucketNameOption);
         var keyPrefix = parseResult.GetValue(keyPrefixOption) ?? string.Empty;
         var maxParallelUploads = parseResult.GetValue(maxParallelUploadsOption) ?? 8;
@@ -36,9 +36,9 @@ internal static class OptionsParser
             throw new InvalidOperationException("Argument '--max-parallel-uploads' must be an integer between 1 and 64.");
         }
 
-        if (string.IsNullOrWhiteSpace(sourceDirectory))
+        if (string.IsNullOrWhiteSpace(source))
         {
-            throw new InvalidOperationException("Argument '--source-directory' is required.");
+            throw new InvalidOperationException("Argument '--source' is required.");
         }
 
         if (string.IsNullOrWhiteSpace(bucketName))
@@ -48,7 +48,7 @@ internal static class OptionsParser
 
         return new UploadOptions
         {
-            SourceDirectory = sourceDirectory,
+            Source = source,
             BucketName = bucketName,
             KeyPrefix = keyPrefix,
             MaxParallelUploads = maxParallelUploads
