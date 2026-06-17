@@ -13,20 +13,14 @@ internal sealed class UploadService
 {
     public async Task UploadAsync(UploadOptions options, CancellationToken cancellationToken)
     {
-        var resolvedSourceDirectory = Path.GetFullPath(options.SourceDirectory);
-        if (!Directory.Exists(resolvedSourceDirectory))
-        {
-            throw new InvalidOperationException($"Source directory '{options.SourceDirectory}' does not exist.");
-        }
+        var (publishRoot, manifestPath) = ResolveSource(options.Source);
 
         var normalizedPrefix = NormalizePrefix(options.KeyPrefix);
-        var assetRoot = Path.Combine(resolvedSourceDirectory, "wwwroot");
+        var assetRoot = Path.Combine(publishRoot, "wwwroot");
         if (!Directory.Exists(assetRoot))
         {
-            throw new InvalidOperationException($"SourceDirectory '{resolvedSourceDirectory}' is not a publish root. Expected a 'wwwroot' directory directly under it.");
+            throw new InvalidOperationException($"Source '{options.Source}' did not resolve to a publish root. Expected a 'wwwroot' directory directly under '{publishRoot}'.");
         }
-
-        var manifestPath = ResolveEndpointsManifestPath(resolvedSourceDirectory);
 
         Console.WriteLine($"Asset root: {assetRoot}");
         Console.WriteLine($"Endpoints manifest: {manifestPath}");
@@ -222,7 +216,7 @@ internal sealed class UploadService
 
         if (manifestMatches.Count == 0)
         {
-            throw new InvalidOperationException($"Could not locate '*.staticwebassets.endpoints.json' directly under '{publishDirectory}'. SourceDirectory must be the publish root.");
+            throw new InvalidOperationException($"Could not locate '*.staticwebassets.endpoints.json' directly under '{publishDirectory}'. Source must be a publish root when passing a directory.");
         }
 
         if (manifestMatches.Count > 1)
@@ -231,6 +225,30 @@ internal sealed class UploadService
         }
 
         return manifestMatches[0].FullName;
+    }
+
+    private static (string PublishRoot, string ManifestPath) ResolveSource(string source)
+    {
+        var resolvedSource = Path.GetFullPath(source);
+
+        if (File.Exists(resolvedSource))
+        {
+            var sourceDirectory = Path.GetDirectoryName(resolvedSource);
+            if (sourceDirectory is null)
+            {
+                throw new InvalidOperationException($"Source '{source}' must include a parent directory.");
+            }
+
+            return (sourceDirectory, resolvedSource);
+        }
+
+        if (!Directory.Exists(resolvedSource))
+        {
+            throw new InvalidOperationException($"Source '{source}' does not exist.");
+        }
+
+        var manifestPath = ResolveEndpointsManifestPath(resolvedSource);
+        return (resolvedSource, manifestPath);
     }
 
     private static string? GetNameValue(IReadOnlyList<NameValueEntry>? values, string name)
