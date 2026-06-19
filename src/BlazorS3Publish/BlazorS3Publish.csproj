@@ -6,10 +6,16 @@
 
     <IsPackable>true</IsPackable>
     <PackAsTool>true</PackAsTool>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <ToolCommandName>blazor-s3-publish</ToolCommandName>
     <Authors>CenterEdge</Authors>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <Description>Tool for uploading Blazor WASM applications to AWS S3 with cache control headers, etc.</Description>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" Link="README.md" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="AWSSDK.S3" Version="4.0.24.1" />
