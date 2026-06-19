@@ -51,6 +51,9 @@ jobs:
       - name: Build
         working-directory: ./src
         run: dotnet build --no-restore --configuration Release -p:Version=${{ steps.gitversion.outputs.semVer  }}
+      - name: Test
+        working-directory: ./src
+        run: dotnet test --no-build --configuration Release -- --report-github
       - name: Pack
         working-directory: ./src
         run: dotnet pack --no-build --configuration Release -p:Version=${{ steps.gitversion.outputs.semVer }}
