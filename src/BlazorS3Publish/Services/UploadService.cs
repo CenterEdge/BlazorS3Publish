@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Net.Mime;
 using Amazon;
@@ -9,9 +10,11 @@ using BlazorS3Publish.Serialization;
 
 namespace BlazorS3Publish.Services;
 
-internal sealed class UploadService
+internal sealed class UploadService(UploadOptions options)
 {
-    public async Task UploadAsync(UploadOptions options, CancellationToken cancellationToken)
+    private readonly Dictionary<string, string> _checksumCache = [];
+
+    public async Task UploadAsync(CancellationToken cancellationToken)
     {
         var (publishRoot, manifestPath) = ResolveSource(options.Source);
 
@@ -49,11 +52,7 @@ internal sealed class UploadService
         }
 
         var uploadItems = new List<UploadItem>();
-        // The same physical asset can appear more than once: once from manifest routing and again
-        // from the fallback file scan. Track final keys so we never overwrite metadata from a
-        // duplicate second upload and never pay duplicate transfer cost.
         var seenS3Keys = new HashSet<string>(StringComparer.Ordinal);
-        var checksumCache = new Dictionary<string, string>(StringComparer.Ordinal);
         var manifestRouteCount = 0;
         foreach (var endpoint in manifest.Endpoints)
         {
@@ -72,7 +71,7 @@ internal sealed class UploadService
             var contentType = GetContentTypeValue(normalizedRoute, manifestContentType);
             var manifestContentEncoding = GetNameValue(endpoint.ResponseHeaders, "Content-Encoding");
             var contentEncoding = GetContentEncodingValue(manifestContentEncoding, assetPath);
-            var checksumSha256 = await GetChecksumSha256ForFileAsync(assetPath, checksumCache, cancellationToken);
+            var checksumSha256 = await GetChecksumSha256ForFileAsync(assetPath, cancellationToken);
 
             var routeObjectPath = GetEndpointObjectRoute(normalizedRoute, endpoint.AssetFile);
             var s3Key = ConvertToS3ObjectKey(normalizedPrefix, routeObjectPath);
@@ -105,7 +104,7 @@ internal sealed class UploadService
 
             var relativePath = Path.GetRelativePath(assetRoot, filePath).Replace('\\', '/');
             var fallbackCacheControl = GetCacheControlValue(relativePath, null);
-            var fallbackChecksum = await GetChecksumSha256ForFileAsync(filePath, checksumCache, cancellationToken);
+            var fallbackChecksum = await GetChecksumSha256ForFileAsync(filePath, cancellationToken);
             var fallbackS3Key = ConvertToS3ObjectKey(normalizedPrefix, relativePath);
             if (!seenS3Keys.Add(fallbackS3Key))
             {
@@ -211,7 +210,6 @@ internal sealed class UploadService
         var manifestMatches = Directory
             .GetFiles(publishDirectory, "*.staticwebassets.endpoints.json", SearchOption.TopDirectoryOnly)
             .Select(path => new FileInfo(path))
-            .OrderByDescending(file => file.LastWriteTimeUtc)
             .ToList();
 
         if (manifestMatches.Count == 0)
@@ -273,7 +271,7 @@ internal sealed class UploadService
             return manifestCacheControl;
         }
 
-        if (route.TrimStart('/').StartsWith(Constants.FrameworkAssetPrefix, StringComparison.OrdinalIgnoreCase))
+        if (route.AsSpan().TrimStart('/').StartsWith(Constants.FrameworkAssetPrefix, StringComparison.OrdinalIgnoreCase))
         {
             // Fingerprinted framework assets are content-addressed and safe to cache as immutable.
             // Cache directives reference: https://www.rfc-editor.org/rfc/rfc9111
@@ -365,9 +363,9 @@ internal sealed class UploadService
         };
     }
 
-    private static async Task<string> GetChecksumSha256ForFileAsync(string filePath, IDictionary<string, string> checksumCache, CancellationToken cancellationToken)
+    private async ValueTask<string> GetChecksumSha256ForFileAsync(string filePath, CancellationToken cancellationToken)
     {
-        if (checksumCache.TryGetValue(filePath, out var cachedChecksum))
+        if (_checksumCache.TryGetValue(filePath, out var cachedChecksum))
         {
             return cachedChecksum;
         }
@@ -383,10 +381,10 @@ internal sealed class UploadService
                 Share = FileShare.Read,
                 Options = FileOptions.Asynchronous | FileOptions.SequentialScan
             });
-        using var sha256 = SHA256.Create();
-        var hashBytes = await sha256.ComputeHashAsync(fileStream, cancellationToken);
+
+        var hashBytes = await SHA256.HashDataAsync(fileStream, cancellationToken);;
         var checksum = Convert.ToBase64String(hashBytes);
-        checksumCache[filePath] = checksum;
+        _checksumCache[filePath] = checksum;
         return checksum;
     }
 
@@ -420,10 +418,25 @@ internal sealed class UploadService
 
         // Manifest and caller inputs can mix separators; normalize once so all path probes work on
         // both Windows and Linux runners.
-        var segments = pathValue.Trim()
-            .Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-        return Path.Combine(segments);
+        var builder = new StringBuilder(pathValue.Length);
+
+        var pathSpan = pathValue.AsSpan().Trim();
+        foreach (var range in pathSpan.Split(['\\', '/']))
+        {
+            var segment = pathSpan[range].Trim();
+            if (segment.Length > 0)
+            {
+                if (builder.Length > 0)
+                {
+                    builder.Append(Path.DirectorySeparatorChar);
+                }
+
+                builder.Append(segment);
+            }
+        }
+
+        return builder.ToString();
     }
 
     private static string ConvertToS3ObjectKey(string prefix, string route)

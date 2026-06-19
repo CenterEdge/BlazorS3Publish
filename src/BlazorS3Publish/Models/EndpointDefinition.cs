@@ -2,11 +2,11 @@ namespace BlazorS3Publish.Models;
 
 internal sealed class EndpointDefinition
 {
-    public string? Route { get; init; }
+    public string? Route { get; set; }
 
-    public string? AssetFile { get; init; }
+    public string? AssetFile { get; set; }
 
-    public List<NameValueEntry>? EndpointProperties { get; init; }
+    public List<NameValueEntry>? EndpointProperties { get; set; }
 
-    public List<NameValueEntry>? ResponseHeaders { get; init; }
+    public List<NameValueEntry>? ResponseHeaders { get; set; }
 }
