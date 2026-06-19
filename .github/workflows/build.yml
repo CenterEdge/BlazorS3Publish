@@ -30,7 +30,7 @@ jobs:
 
       - name: Determine Version
         id: version
-        uses: CenterEdge/ci-actions/dotnet/nuget-version@f6fc6f6f5e4ae8e627b7b9ae6e84e1fa082f8957
+        uses: CenterEdge/actions/dotnet/nuget-version@a2a2378e8a1871d6b138fd1a265f07c8c7ab366a
         with:
           tag-prefix: "release/"
 
