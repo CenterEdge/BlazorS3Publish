@@ -1,0 +1,65 @@
+name: CodeQL
+
+on:
+  push:
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: '17 18 * * 4'
+
+jobs:
+  analyze:
+    name: Analyze (C#)
+    runs-on: ubuntu-latest
+
+    permissions:
+      actions: read
+      contents: read
+      packages: read
+      security-events: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Determine Version
+        id: version
+        uses: CenterEdge/actions/dotnet/nuget-version@v1
+        with:
+          tag-prefix: "release/"
+
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/*.props', '**/*.targets') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: csharp, actions
+
+      - name: Restore
+        working-directory: ./src
+        run: dotnet restore
+
+      - name: Build
+        working-directory: ./src
+        run: >
+          dotnet build
+          --no-restore
+          --configuration Release
+          -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
